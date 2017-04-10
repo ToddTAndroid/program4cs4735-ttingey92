@@ -29,7 +29,7 @@
             android:layout_height="wrap_content"
             android:ems="10"
             android:inputType="textPersonName"
-            android:text="10.216.217.24" />
+            android:text="192.168.1.131" />
     </LinearLayout>
 
     <LinearLayout

@@ -1,6 +1,10 @@
 package edu.cs4730.battleclientvr;
 
+// Code added by Todd Tingey for program4
+
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.app.Fragment;
@@ -9,6 +13,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+
+import android.view.InputDevice;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+
+import java.util.ArrayList;
 
 
 /**
@@ -19,6 +29,8 @@ import android.widget.EditText;
  */
 public class ConnectFragment extends Fragment {
 
+    Context context = getActivity();
+
     private OnFragmentInteractionListener mListener;
 
     public String host, name="VRbot";
@@ -26,6 +38,8 @@ public class ConnectFragment extends Fragment {
 
     EditText et_host, et_port, et_name, et_armor, et_power, et_scan;
     Button btn_connect;
+    Boolean isJoyStick = false, isGamePad = false;
+    AlertDialog alert;
 
     public ConnectFragment() {
         // Required empty public constructor
@@ -55,9 +69,22 @@ public class ConnectFragment extends Fragment {
                 armor = Integer.parseInt(et_armor.getText().toString());
                 power = Integer.parseInt(et_power.getText().toString());
                 scan = Integer.parseInt(et_scan.getText().toString());
-                mListener.onFragmentConnection(0);  //now have the activity do the networking and switch to the other fragment.
+                getGameControllerIds();
+                //mListener.onFragmentConnection(0);  //now have the activity do the networking and switch to the other fragment.
                 //seriously suggest using the controller or bt controller to say "click" ok here.  ie, do this, so you put the phone
                 //in the headset.
+
+                AlertDialog.Builder builder = new AlertDialog.Builder(view.getContext());
+                builder.setTitle("Press A when ready");
+                builder.setCancelable(false)
+                        .setPositiveButton("OK", new DialogInterface.OnClickListener(){
+                            public void onClick(DialogInterface dialog, int id) {
+                                dialog.dismiss();
+                                btn_connect.setVisibility(View.GONE);
+                            }
+                        });
+                alert = builder.create();
+                alert.show();
             }
         });
 
@@ -65,8 +92,32 @@ public class ConnectFragment extends Fragment {
 
     }
 
+    public void myOnKeyDown() {
+        mListener.onFragmentConnection(0);
+    }
 
+    public ArrayList getGameControllerIds() {
+        ArrayList gameControllerDeviceIds = new ArrayList();
+        int[] deviceIds = InputDevice.getDeviceIds();
+        for (int deviceId : deviceIds) {
+            InputDevice dev = InputDevice.getDevice(deviceId);
+            int sources = dev.getSources();
 
+            // Verify that the device has gamepad buttons, control sticks, or both.
+            if (((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD)
+                    || ((sources & InputDevice.SOURCE_JOYSTICK)
+                    == InputDevice.SOURCE_JOYSTICK)) {
+                // This device is a game controller. Store its device ID.
+                if (!gameControllerDeviceIds.contains(deviceId)) {
+                    gameControllerDeviceIds.add(deviceId);
+                }
+
+                if ((sources & InputDevice.SOURCE_GAMEPAD)  == InputDevice.SOURCE_GAMEPAD) isGamePad= true;
+                if ((sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) isJoyStick = true;
+            }
+        }
+        return gameControllerDeviceIds;
+    }
 
     @Override
     public void onAttach(Context context) {

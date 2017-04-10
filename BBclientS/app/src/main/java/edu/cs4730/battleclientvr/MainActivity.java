@@ -1,6 +1,9 @@
 package edu.cs4730.battleclientvr;
 
+// Code added by Todd Tingey for program4
+
 import android.app.FragmentManager;
+import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -11,6 +14,7 @@ import com.google.vr.sdk.base.GvrActivity;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.Flushable;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -26,11 +30,16 @@ import com.google.vr.sdk.controller.Controller.ConnectionStates;
 import com.google.vr.sdk.controller.ControllerManager;
 import com.google.vr.sdk.controller.ControllerManager.ApiStatus;
 
+
+import android.view.InputDevice;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+
 public class MainActivity extends GvrActivity implements
         ConnectFragment.OnFragmentInteractionListener,
         GVRFragment.OnFragmentInteractionListener {
     String TAG = "MainActivity";
-
+    Context context = this;
 
     //object used for waiting
     // private static final Object lock = new Object();
@@ -41,7 +50,7 @@ public class MainActivity extends GvrActivity implements
     GVRFragment myGVRFrag;
 
     //networking variables
-    boolean connected = false, running = false;
+    boolean connected = false, running = false, isJoyStick = false, isGamePad = false, isGameStart = true;
     network mynetwork = null;
     String host, botline = null;
     int port;
@@ -81,6 +90,8 @@ public class MainActivity extends GvrActivity implements
                 + prefs.getString("Botscan", "") + " ";
         */
 
+        isGamePad = myConnectFrag.isGamePad;
+        isJoyStick = myConnectFrag.isJoyStick;
         host = myConnectFrag.host;
         port = myConnectFrag.port;
         botline = myConnectFrag.name + " " + myConnectFrag.armor + " " + myConnectFrag.power + " "
@@ -99,6 +110,183 @@ public class MainActivity extends GvrActivity implements
         //so send the command to the server!
     }
 
+    // Controller stuff
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent event){
+        boolean handled = false;
+        if((event.getSource() & InputDevice.SOURCE_GAMEPAD)
+                == InputDevice.SOURCE_GAMEPAD) {
+
+            if(event.getAction() == KeyEvent.ACTION_DOWN) {
+                switch (event.getKeyCode()) {
+                    case KeyEvent.KEYCODE_BUTTON_X:
+                        handled = true;
+                        break;
+                    case KeyEvent.KEYCODE_BUTTON_A:
+                        if(isGameStart){
+                            myConnectFrag.myOnKeyDown();
+                            isGameStart = false;
+                        }
+                        handled = true;
+                        break;
+                    case KeyEvent.KEYCODE_BUTTON_Y:
+                        handled = true;
+                        break;
+                    case KeyEvent.KEYCODE_BUTTON_B:
+                        int ang = getAngle();
+                        String angle = Integer.toString(ang);
+                        String cmnd = "fire " + angle;
+                        synchronized (mynetwork.cmd){
+                            mynetwork.cmd = cmnd;
+                        }
+                        //Toast.makeText(context, "A button pushed", Toast.LENGTH_SHORT).show();
+                        handled = true;
+                        break;
+                }
+                if(!handled){
+                    Log.v("KeyEvent", "Code is " + event.getKeyCode());
+                }
+            }
+            else if (event.getAction() == KeyEvent.ACTION_UP) {
+                handled = true;
+            }
+            else {
+                Log.v("KeyEvent", "unknown action " + event.getAction());
+            }
+            return handled;
+        }
+
+        return handled;
+    }
+
+    @Override
+    public boolean onGenericMotionEvent(android.view.MotionEvent motionEvent) {
+        float xaxis =0.0f, yaxis=0.0f;
+        boolean handled = false;
+
+//        if (isJoyStick) {
+//            xaxis = motionEvent.getAxisValue(MotionEvent.AXIS_X);
+//            yaxis = motionEvent.getAxisValue(MotionEvent.AXIS_Y);
+//
+//            handled = true;
+//        }
+
+        if (isGamePad){
+            xaxis = motionEvent.getAxisValue(MotionEvent.AXIS_HAT_X);
+            yaxis = motionEvent.getAxisValue(MotionEvent.AXIS_HAT_Y);
+
+            if(Float.compare(xaxis, -1.0f) == 0) {
+                // Left
+                String moveSet = getMovementDirection(0);
+                String cmnd = "move " + moveSet;
+                synchronized (mynetwork.cmd){
+                    mynetwork.cmd = cmnd;
+                }
+                handled = true;
+            } else if (Float.compare(xaxis, 1.0f) == 0) {
+                // Right
+                String moveSet = getMovementDirection(1);
+                String cmnd = "move " + moveSet;
+                synchronized (mynetwork.cmd){
+                    mynetwork.cmd = cmnd;
+                }
+                handled = true;
+            } else if (Float.compare(yaxis, -1.0f) == 0) {
+                // Up
+                String moveSet = getMovementDirection(2);
+                String cmnd = "move " + moveSet;
+                synchronized (mynetwork.cmd){
+                    mynetwork.cmd = cmnd;
+                }
+                handled = true;
+            } else if (Float.compare(yaxis, 1.0f) == 0) {
+                // Down
+                String moveSet = getMovementDirection(3);
+                String cmnd = "move " + moveSet;
+                synchronized (mynetwork.cmd){
+                    mynetwork.cmd = cmnd;
+                }
+                handled = true;
+            } else if ((Float.compare(xaxis, 0.0f) == 0)
+                    && (Float.compare(yaxis, 0.0f) == 0)){
+                // Centered
+                handled = true;
+            }
+            if(!handled){
+                Log.d(TAG, "MotionEvent: unhandled event");
+            }
+        }
+        return handled;
+    }
+
+    // Direction key: 0=left, 1=right, 2=up, 3=down
+    public String getMovementDirection(int direction) {
+
+        int octant = getOctant();
+        String moveSet = "0 0";
+        switch (direction){
+            case 1:
+                if(octant == 1) moveSet = "1 0";
+                else if(octant == 2) moveSet = "1 1";
+                else if(octant == 3) moveSet = "0 1";
+                else if(octant == 4) moveSet = "-1 1";
+                else if(octant == 5) moveSet = "-1 0";
+                else if(octant == 6) moveSet = "-1 -1";
+                else if(octant == 7) moveSet = "0 -1";
+                else if(octant == 8) moveSet = "1 -1";
+                break;
+            case 0:
+                if(octant == 1) moveSet = "-1 0";
+                else if(octant == 2) moveSet = "-1 -1";
+                else if(octant == 3) moveSet = "0 -1";
+                else if(octant == 4) moveSet = "1 -1";
+                else if(octant == 5) moveSet = "1 0";
+                else if(octant == 6) moveSet = "1 1";
+                else if(octant == 7) moveSet = "0 1";
+                else if(octant == 8) moveSet = "-1 1";
+                break;
+            case 2:
+                if(octant == 1) moveSet = "0 -1";
+                else if(octant == 2) moveSet = "1 -1";
+                else if(octant == 3) moveSet = "1 0";
+                else if(octant == 4) moveSet = "1 1";
+                else if(octant == 5) moveSet = "0 1";
+                else if(octant == 6) moveSet = "-1 1";
+                else if(octant == 7) moveSet = "-1 0";
+                else if(octant == 8) moveSet = "-1 -1";
+                break;
+            case 3:
+                if(octant == 1) moveSet = "0 1";
+                else if(octant == 2) moveSet = "-1 1";
+                else if(octant == 3) moveSet = "-1 0";
+                else if(octant == 4) moveSet = "-1 -1";
+                else if(octant == 5) moveSet = "0 -1";
+                else if(octant == 6) moveSet = "1 -1";
+                else if(octant == 7) moveSet = "1 0";
+                else if(octant == 8) moveSet = "1 1";
+                break;
+            default:
+                Log.d(TAG, "GetDirec: not a direction");
+                break;
+        }
+        return moveSet;
+    }
+
+    public int getOctant(){
+        int ang = getAngle();
+        int octant;
+
+        if(ang > 22 && ang <= 67) octant = 2;
+        else if (ang > 67 && ang <= 112) octant = 3;
+        else if (ang > 112 && ang <= 157) octant = 4;
+        else if (ang > 157 && ang <= 102) octant = 5;
+        else if (ang > 102 && ang <= 247) octant = 6;
+        else if (ang > 247 && ang <= 292) octant = 7;
+        else if (ang > 292 && ang <= 337) octant = 8;
+        else { octant = 1; }
+
+        return octant;
+    }
 
     //this is used to correct the angle so it pointed correctly.
     public int getAngle() {
@@ -308,6 +496,7 @@ public class MainActivity extends GvrActivity implements
                     //          hp = Integer.parseInt(str[5]); //hit points
                     //send status message for drawing purposes
                     mkmsg("STATUS " + str[1] + " " + str[2] + " " + str[3] + " " + str[4] + " " + str[5]);
+                    Log.d(TAG, "move: " + str[3] + " shot: " + str[4]);
                     myGVRFrag.setme(Float.parseFloat(str[1]), Float.parseFloat(str[2]));
                     mr = Integer.parseInt(str[3]); //movement rate
                     sl = Integer.parseInt(str[4]);
